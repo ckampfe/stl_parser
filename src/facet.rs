@@ -1,6 +1,7 @@
 use crate::bounding_box::BoundingBox;
 use crate::coordinate::Coordinate;
 
+/// Also referred to as a triangle.
 #[derive(Clone, Debug)]
 pub struct Facet {
     pub normal_vector: (f32, f32, f32),
@@ -8,6 +9,9 @@ pub struct Facet {
 }
 
 impl Facet {
+    /// Updates a bounding box to accommodate this facet.
+    /// If any coordinate of the facet is less than/greater than the dimensions of the bounding box,
+    /// the bounding box must expand to cover the facet.
     pub fn update_bounding_box(&self, bounding_box: BoundingBox) -> BoundingBox {
         let (a, b, c) = self.vertices;
         BoundingBox {
