@@ -31,7 +31,7 @@ fn main() {
     let filepath = matches.value_of("file").unwrap();
     let is_ascii = matches.is_present("ascii");
 
-    match parser::binary::solid_from_filepath(filepath) {
+    match parser::solid_from_filepath(filepath, is_ascii) {
         Ok(((), solid)) => {
             let (num_facets, surface_area, bounding_box) = solid.analyze();
             println!("Number of Triangles: {}", num_facets);
@@ -41,6 +41,6 @@ fn main() {
         Err(error) => {
             dbg!(error);
             panic!("Oh no!")
-        },
+        }
     }
 }

@@ -1,12 +1,13 @@
 use crate::coordinate::Coordinate;
 use crate::facet::Facet;
+use crate::parser::error::SolidError;
 use crate::solid::Solid;
 use nom::combinator::map;
 use nom::number::complete::{le_f32, le_u16, le_u32};
 use nom::sequence::tuple;
 use nom::{self, IResult};
 use std::fs::File;
-use std::io::{self, BufReader, Read};
+use std::io::{BufReader, Read};
 
 /// This constant is defined by the binary STL format.
 const FACET_SIZE: usize = (4 * 3 * 4) + 2; // (4 vectors/facet * 3 dimensions/vector * 4 bytes/dimension) + 2 attribute byte count = 50 bytes/facet
@@ -47,14 +48,6 @@ fn facet(input: &[u8]) -> IResult<&[u8], Facet> {
     )(input)
 }
 
-#[derive(Debug)]
-pub enum SolidError {
-    IO(io::Error),
-    UnparsableAttributeByteCount,
-    UnparsableNumFacets,
-    UnparsableFacet,
-}
-
 pub fn solid<T>(reader: &mut T) -> IResult<(), Solid, SolidError>
 where
     T: Read,
@@ -73,7 +66,7 @@ where
         Ok((_, nf)) => {
             num_facets = nf;
         }
-        Err(_) => return Err(nom::Err::Failure(SolidError::UnparsableNumFacets)),
+        Err(_) => return Err(nom::Err::Failure(SolidError::Unparsable)),
     };
 
     let (num_chunks, last_chunk_size) = chunks_to_process(num_facets as usize);
@@ -94,7 +87,7 @@ where
                     input = rest;
                 }
                 Err(_) => {
-                    return Err(nom::Err::Failure(SolidError::UnparsableFacet));
+                    return Err(nom::Err::Failure(SolidError::Unparsable));
                 }
             }
         }
@@ -115,13 +108,13 @@ where
                     input = rest;
                 }
                 Err(_) => {
-                    return Err(nom::Err::Failure(SolidError::UnparsableFacet));
+                    return Err(nom::Err::Failure(SolidError::Unparsable));
                 }
             }
         }
 
         if let Err(_) = le_u16::<nom::error::VerboseError<&[u8]>>(input) {
-            return Err(nom::Err::Failure(SolidError::UnparsableNumFacets));
+            return Err(nom::Err::Failure(SolidError::Unparsable));
         };
     }
 

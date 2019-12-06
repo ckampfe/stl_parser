@@ -1,4 +1,6 @@
+use crate::coordinate::Coordinate;
 use crate::facet::Facet;
+use crate::parser::error::SolidError;
 use crate::solid::Solid;
 use nom::bytes::complete::tag_no_case;
 use nom::character::complete::{alphanumeric1, multispace0, multispace1};
@@ -6,7 +8,9 @@ use nom::combinator::{map, map_parser, not, opt};
 use nom::multi::separated_list;
 use nom::number::complete::float;
 use nom::sequence::tuple;
-use nom::IResult;
+use nom::{AsBytes, IResult};
+use std::fs::File;
+use std::io::{BufReader, Read};
 
 fn vector_3d(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
     map(
@@ -15,24 +19,26 @@ fn vector_3d(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
     )(input)
 }
 
-fn vertex(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
+fn vertex(input: &[u8]) -> IResult<&[u8], Coordinate> {
     map(
         tuple((tag_no_case("vertex"), multispace1, vector_3d)),
-        |(_, _, vector)| vector,
+        |(_, _, vector)| Coordinate::from(vector),
     )(input)
 }
 
-fn vertices(input: &[u8]) -> IResult<&[u8], Vec<(f32, f32, f32)>> {
-    if let Ok((rest, (_, vs, _))) = tuple((
-        multispace1,
-        separated_list(multispace1, vertex),
-        multispace1,
-    ))(input)
-    {
-        Ok((rest, vs))
-    } else {
-        map(multispace1, |_| vec![])(input)
-    }
+fn vertices(input: &[u8]) -> IResult<&[u8], (Coordinate, Coordinate, Coordinate)> {
+    map(
+        tuple((
+            multispace1,
+            vertex,
+            multispace1,
+            vertex,
+            multispace1,
+            vertex,
+            multispace1,
+        )),
+        |(_, a, _, b, _, c, _)| (a, b, c),
+    )(input)
 }
 
 fn normal_vector(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
@@ -42,7 +48,7 @@ fn normal_vector(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
     )(input)
 }
 
-fn outer_loop(input: &[u8]) -> IResult<&[u8], Vec<(f32, f32, f32)>> {
+fn outer_loop(input: &[u8]) -> IResult<&[u8], (Coordinate, Coordinate, Coordinate)> {
     map(
         tuple((
             tag_no_case("outer"),
@@ -95,18 +101,43 @@ fn solid_name(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
     map(tuple((multispace1, valid_solid_name)), |(_, name)| name)(input)
 }
 
-fn solid(input: &[u8]) -> IResult<&[u8], Solid> {
-    map(
+pub fn solid(input: &[u8]) -> IResult<(), Solid, SolidError> {
+    match map(
         tuple((
+            // Leading whitespace
+            multispace0,
             tag_no_case("solid"),
+            // This solid name is used.
+            // Note that binary files do not have a name field, so this is maybe less useful than you would think.
             opt(solid_name),
             facets,
             tag_no_case("endsolid"),
+            // We do not check for consistency between the two names.
+            // This one is included to ensure parsing works, but the result is thrown away.
+            opt(solid_name),
+            // Trailing whitespace
+            multispace0,
         )),
-        |(_, name, fs, _)| Solid { name, facets: fs },
+        |(_, _, name, fs, _, _, _)| Solid { name, facets: fs },
     )(input)
+    {
+        Ok((_, s)) => Ok(((), s)),
+        Err(_) => Err(nom::Err::Failure(SolidError::Unparsable)),
+    }
 }
 
-fn parse(input: &[u8]) -> IResult<&[u8], Solid> {
-    map(tuple((multispace0, solid, multispace0)), |(_, s, _)| s)(input)
+pub fn solid_from_file(file: &File) -> IResult<(), Solid, SolidError> {
+    let mut buffer = vec![];
+    let mut reader = BufReader::new(file);
+    if let Err(error) = reader.read_to_end(&mut buffer) {
+        return Err(nom::Err::Failure(SolidError::IO(error)));
+    }
+    solid(buffer.as_bytes())
+}
+
+pub fn solid_from_filepath(filepath: &str) -> IResult<(), Solid, SolidError> {
+    match File::open(filepath) {
+        Ok(file) => solid_from_file(&file),
+        Err(error) => Err(nom::Err::Failure(SolidError::IO(error))),
+    }
 }
