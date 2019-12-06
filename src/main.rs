@@ -1,11 +1,27 @@
 extern crate clap;
 extern crate nom;
 
+use parser::error::SolidError;
+use std::process::exit;
+
 pub mod bounding_box;
 pub mod coordinate;
 pub mod facet;
 pub mod parser;
 pub mod solid;
+
+fn handle_parse_error(error: SolidError) {
+    match error {
+        SolidError::Unparsable => {
+            println!("The solid file is unparsable by this program");
+            exit(1);
+        }
+        SolidError::IO(io_error) => {
+            println!("Could not read from the file due to\n{}", io_error);
+            exit(1);
+        }
+    }
+}
 
 fn main() {
     let matches = clap::App::new("stlp")
@@ -37,10 +53,12 @@ fn main() {
             println!("Number of Triangles: {}", num_facets);
             println!("Surface Area: {:.4}", surface_area);
             println!("Bounding Box: {}", bounding_box);
-        }
-        Err(error) => {
-            dbg!(error);
-            panic!("Oh no!")
+        },
+        Err(nom::Err::Failure(error)) => handle_parse_error(error),
+        Err(nom::Err::Error(error)) => handle_parse_error(error),
+        Err(nom::Err::Incomplete(_)) => {
+            println!("An unexpected error occurred");
+            exit(1);
         }
     }
 }

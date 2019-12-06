@@ -61,15 +61,12 @@ where
     if let Err(error) = reader.read_exact(&mut num_facets_buffer) {
         return Err(nom::Err::Failure(SolidError::IO(error)));
     };
-    let mut num_facets = 0;
-    match le_u32::<nom::error::VerboseError<&[u8]>>(num_facets_buffer.as_ref()) {
-        Ok((_, nf)) => {
-            num_facets = nf;
-        }
-        Err(_) => return Err(nom::Err::Failure(SolidError::Unparsable)),
-    };
+    let num_facets = le_u32::<nom::error::VerboseError<&[u8]>>(num_facets_buffer.as_ref());
+    if let Err(_) = num_facets {
+        return Err(nom::Err::Failure(SolidError::Unparsable));
+    }
 
-    let (num_chunks, last_chunk_size) = chunks_to_process(num_facets as usize);
+    let (num_chunks, last_chunk_size) = chunks_to_process(num_facets.unwrap().1 as usize);
     let mut all_facets = vec![];
 
     for _ in 0..num_chunks {
