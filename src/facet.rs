@@ -1,7 +1,7 @@
 use crate::bounding_box::BoundingBox;
 use crate::coordinate::Coordinate;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Facet {
     pub normal_vector: (f32, f32, f32),
     pub vertices: (Coordinate, Coordinate, Coordinate),

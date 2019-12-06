@@ -9,23 +9,23 @@ use std::fs::File;
 use std::io::{self, BufReader, Read};
 
 /// This constant is defined by the binary STL format.
-const FACET_SIZE: usize = 4 * 3 * 4; // 4 vectors/facet * 3 dimensions/vector * 4 bytes/dimension = 48 bytes/facet
+const FACET_SIZE: usize = (4 * 3 * 4) + 2; // (4 vectors/facet * 3 dimensions/vector * 4 bytes/dimension) + 2 attribute byte count = 50 bytes/facet
 /// This constant was chosen because it is the chunk size used in AWS S3 streaming file uploads.
 /// That seems like a pretty well vetted chunk size.
 const MAX_CHUNK_SIZE: usize = 5 * 1024;
 /// However, the MAX_CHUNK_SIZE doesn't fit a fixed number of facets cleanly into it.
 /// So instead of using 5 MiB exactly, I used the number closest to 5 MiB that will fit an integer number of facets.
-const CHUNK_SIZE: usize = MAX_CHUNK_SIZE - (MAX_CHUNK_SIZE % FACET_SIZE); // 5 MiB - (5 MiB % FACET_SIZE) = 5088 bytes
-const FACETS_PER_CHUNK: usize = CHUNK_SIZE / FACET_SIZE; // 5088 bytes/chunk / 48 bytes/facet = 106 facets/chunk
+const CHUNK_SIZE: usize = MAX_CHUNK_SIZE - (MAX_CHUNK_SIZE % FACET_SIZE); // 5 MiB - (5 MiB % FACET_SIZE) = 5100 bytes
+const FACETS_PER_CHUNK: usize = CHUNK_SIZE / FACET_SIZE; // 5100 bytes/chunk / 50 bytes/facet = 102 facets/chunk
 
 /// Returns the number of CHUNK_SIZE chunks needed to process all facets in the entire binary STL file.
-/// For a file with 2000 facets, the portion of the full file containing facets is 33024 bytes.
-/// So to process facets for this example file, with a CHUNK_SIZE of 4992 bytes, we need to process 6 chunks and one
-/// nonstandard chunk of 3072 bytes.
+/// For a file with 2000 facets, the portion of the full file containing facets is 100000 bytes.
+/// So to process facets for this example file, with a CHUNK_SIZE of 5100 bytes, we need to process 19 chunks and one
+/// nonstandard chunk of 3100 bytes.
 fn chunks_to_process(num_facets: usize) -> (usize, usize) {
-    let total_size = num_facets * FACET_SIZE; // 2000 facets * 48 bytes/facet = 96000 bytes
-    let num_chunks = total_size / CHUNK_SIZE; // 96000 bytes / 5088 bytes/chunk = 18 chunks
-    let last_chunk_size = total_size % CHUNK_SIZE; // 96000 bytes % 5088 bytes/chunk = 4416 bytes
+    let total_size = num_facets * FACET_SIZE; // 2000 facets * 50 bytes/facet = 100000 bytes
+    let num_chunks = total_size / CHUNK_SIZE; // 100000 bytes / 5100 bytes/chunk = 19 chunks
+    let last_chunk_size = total_size % CHUNK_SIZE; // 100000 bytes % 5100 bytes/chunk = 3100 bytes
     (num_chunks, last_chunk_size)
 }
 
@@ -35,8 +35,8 @@ fn vector_3d(input: &[u8]) -> IResult<&[u8], (f32, f32, f32)> {
 
 fn facet(input: &[u8]) -> IResult<&[u8], Facet> {
     map(
-        tuple((vector_3d, vector_3d, vector_3d, vector_3d)),
-        |(normal_vector, v1, v2, v3)| Facet {
+        tuple((vector_3d, vector_3d, vector_3d, vector_3d, le_u16)),
+        |(normal_vector, v1, v2, v3, _)| Facet {
             normal_vector,
             vertices: (
                 Coordinate::from(v1),
@@ -101,7 +101,7 @@ where
     }
 
     if last_chunk_size > 0 {
-        let mut chunk_buffer = [0u8; CHUNK_SIZE+2];
+        let mut chunk_buffer = [0u8; CHUNK_SIZE];
         if let Err(error) = reader.read(&mut chunk_buffer) {
             return Err(nom::Err::Failure(SolidError::IO(error)));
         }
@@ -121,15 +121,6 @@ where
         }
 
         if let Err(_) = le_u16::<nom::error::VerboseError<&[u8]>>(input) {
-            return Err(nom::Err::Failure(SolidError::UnparsableNumFacets));
-        };
-    } else {
-        let mut chunk_buffer = [0u8; 2];
-        if let Err(error) = reader.read(&mut chunk_buffer) {
-            return Err(nom::Err::Failure(SolidError::IO(error)));
-        }
-
-        if let Err(_) = le_u16::<nom::error::VerboseError<&[u8]>>(chunk_buffer.as_ref()) {
             return Err(nom::Err::Failure(SolidError::UnparsableNumFacets));
         };
     }
