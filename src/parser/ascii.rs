@@ -2,8 +2,9 @@ use crate::coordinate::Coordinate;
 use crate::facet::Facet;
 use crate::parser::error::SolidError;
 use crate::solid::Solid;
-use nom::bytes::complete::tag_no_case;
-use nom::character::complete::{alphanumeric1, multispace0, multispace1};
+use nom::bytes::complete::{tag_no_case, take_while1};
+use nom::character::is_space;
+use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::{map, map_parser, not, opt};
 use nom::multi::separated_list;
 use nom::number::complete::float;
@@ -80,13 +81,13 @@ pub fn facet(input: &[u8]) -> IResult<&[u8], Facet> {
 }
 
 fn facets(input: &[u8]) -> IResult<&[u8], Vec<Facet>> {
-    if let Ok((rest, (_, fs, _))) =
-        tuple((multispace1, separated_list(multispace1, facet), multispace1))(input)
-    {
-        Ok((rest, fs))
-    } else {
-        map(multispace1, |_| vec![])(input)
-    }
+    map(
+        tuple((multispace1, opt(tuple((separated_list(multispace1, facet), multispace1))))),
+        |(_, maybe_facets)| match maybe_facets {
+            None => vec![],
+            Some((fs, _)) => fs
+        }
+    )(input)
 }
 
 fn solid_name_excluding_facet(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
@@ -94,7 +95,7 @@ fn solid_name_excluding_facet(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
 }
 
 fn valid_solid_name(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
-    map_parser(alphanumeric1, solid_name_excluding_facet)(input)
+    map_parser(take_while1(|c| !is_space(c)), solid_name_excluding_facet)(input)
 }
 
 fn solid_name(input: &[u8]) -> IResult<&[u8], Vec<u8>> {
